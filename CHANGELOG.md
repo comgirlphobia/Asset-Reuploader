@@ -1,3 +1,14 @@
+# [1.4.1](https://github.com/kartFr/Asset-Reuploader/releases/tag/1.4.1) - September 15th, 2025
+- Got rid of atomic writing (very naive to put that in lmaooo)
+- (actually) Fixed mesh changing colors.
+- Fixed case in animations where if the owner had a place it wouldn't look at the place list. (oops)
+
+Okay pls read this...
+Spoofing has to be different now, due to roblox updates its no longer as simple as getting it from thin air.
+We now HAVE to provide a place id with the animation, which in some cases is fine if its from a public game.
+If its from a private game you guys will have to provide the ID under filter. 
+Keep in mind that asset permission is based off universe the universe. But the api itself is based off places, so you only have to provide 1 place from that universe.
+
 # [1.4.0](https://github.com/kartFr/Asset-Reuploader/releases/tag/1.4.0) - August 6th, 2025
 
 - Changed it so writing to files is now atomic. ([#58](https://github.com/kartFr/Asset-Reuploader/pull/58))

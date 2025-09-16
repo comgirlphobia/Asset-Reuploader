@@ -78,7 +78,9 @@ func Reupload(ctx *context.Context, r *request.Request) {
 	creatorPlaceMap := shardedmap.New[*atomicarray.AtomicArray[int64]]()
 	creatorMutexMap := shardedmap.New[*sync.RWMutex]()
 
-	uploadQueue := taskqueue.New[int64](time.Minute, 3000)
+	uploadQueue := taskqueue.New[int64](time.Minute, 3000)                  // wouldnt it be smarter to build in the queue with the api library... YES... but we dont do fixes aroudn here we just add on to the slow degredation of the code base
+	groupGameQueue := taskqueue.New[*games.GamesResponse](time.Second*5, 5) // there doesnt seem to be a limit in minutes on this api endpoint... and its not public and i dont feel like testing the limits sooo hopefully this works
+	userGameQueue := taskqueue.New[*games.GamesResponse](time.Second*5, 5)  // I dont even think there is a limit on this like group games but we can be safe... yes i like to spam elipses
 
 	logger.Println("Reuploading animations...")
 
@@ -124,11 +126,12 @@ func Reupload(ctx *context.Context, r *request.Request) {
 						return id, nil
 					}
 
-					if err == ide.UploadAnimationErrors.ErrNotLoggedIn {
+					switch err {
+					case ide.UploadAnimationErrors.ErrNotLoggedIn:
 						clientutils.GetNewCookie(ctx, r, "cookie expired")
-					} else if err == ide.UploadAnimationErrors.ErrInappropriateName {
+					case ide.UploadAnimationErrors.ErrInappropriateName:
 						assetInfo.Name = fmt.Sprintf("(%s) [Censored]", assetInfo.Name)
-					} else {
+					default:
 						switch err.(type) {
 						case *net.OpError, *net.DNSError:
 							uploadQueue.Limiter.Decrement()
@@ -183,21 +186,32 @@ func Reupload(ctx *context.Context, r *request.Request) {
 		var resp *games.GamesResponse
 		var err error
 		if creatorType == "Group" {
-			resp, err = games.GroupGames(client, creatorID)
+			queueRes := <-groupGameQueue.QueueTask(func() (*games.GamesResponse, error) {
+				return games.GroupGames(client, creatorID)
+			})
+			resp = queueRes.Result
+			err = queueRes.Error
 		} else {
-			resp, err = games.UserGames(client, creatorID)
+			queueRes := <-userGameQueue.QueueTask(func() (*games.GamesResponse, error) {
+				return games.UserGames(client, creatorID)
+			})
+			resp = queueRes.Result
+			err = queueRes.Error
 		}
 		if err != nil {
 			return nil, err
 		}
 
-		var ids []int64
-		if len(resp.Data) > 0 {
-			ids = []int64{resp.Data[0].RootPlace.ID} // we only need 1 valid place id ^-^
-		} else {
-			ids = make([]int64, 0, len(defaultPlaceIDs))
-			ids = append(ids, defaultPlaceIDs...)
+		ids := make([]int64, 0, len(defaultPlaceIDs)) // we only do len defaultPlaceIds because there may be overlapping, i guess allocating more memory would be fine... idk guys im getting lazy just wait for revamp
+		for _, placeInfo := range resp.Data {         // yes we copying many bytes per iteration, yes i dont care, yes this is another stupid message, yes code iwll get better on revamp :sob:
+			rootPlaceID := placeInfo.RootPlace.ID
+
+			if _, exists := defaultPlaceIDsMap[rootPlaceID]; exists {
+				continue
+			}
+			ids = append(ids, rootPlaceID) // we no longer only need 1 valid place id :// ( ͡° ͜ʖ ͡°) yall remember this peak face lmk
 		}
+		ids = append(ids, defaultPlaceIDs...)
 
 		cache := atomicarray.New(&ids)
 		creatorShard.Set(creatorID, cache)

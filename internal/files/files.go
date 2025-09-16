@@ -11,28 +11,15 @@ func Write(n, c string) error {
 		return err
 	}
 
-	f, err := os.CreateTemp(dir, n+".tmp")
+	f, err := os.Create(filepath.Join(dir, n))
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err != nil {
-			f.Close()
-			os.Remove(f.Name())
-		}
-	}()
+	defer f.Close()
 
 	if _, err := f.WriteString(c); err != nil {
 		return err
 	}
-	if err := f.Sync(); err != nil {
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-
-	err = rename(f.Name(), filepath.Join(dir, n))
 	return err
 }
 
